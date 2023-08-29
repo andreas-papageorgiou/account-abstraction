@@ -4,6 +4,7 @@ pragma solidity ^0.8.12;
 
 /* solhint-disable reason-string */
 
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "../interfaces/IPaymaster.sol";
 import "../interfaces/IEntryPoint.sol";
@@ -17,6 +18,10 @@ import "./Helpers.sol";
 abstract contract BasePaymaster is IPaymaster, Ownable {
 
     IEntryPoint immutable public entryPoint;
+
+    address public constant VTHO_TOKEN_ADDRESS = 0x0000000000000000000000000000456E65726779;
+
+    IERC20 public constant VTHO_TOKEN_CONTRACT = IERC20(VTHO_TOKEN_ADDRESS);
 
     constructor(IEntryPoint _entryPoint) {
         entryPoint = _entryPoint;
@@ -60,8 +65,10 @@ abstract contract BasePaymaster is IPaymaster, Ownable {
     /**
      * add a deposit for this paymaster, used for paying for transaction fees
      */
-    function deposit() public payable {
-        entryPoint.depositTo{value : msg.value}(address(this));
+    function deposit(uint256 amount) public {
+        require(VTHO_TOKEN_CONTRACT.transferFrom(msg.sender, address(this), amount), "paymaster deposit transfer failed");
+        require(VTHO_TOKEN_CONTRACT.approve(address(entryPoint), amount), "paymaster deposit approval failed");
+        entryPoint.depositAmountTo(address(this), amount);
     }
 
     /**
@@ -77,8 +84,10 @@ abstract contract BasePaymaster is IPaymaster, Ownable {
      * This method can also carry eth value to add to the current stake.
      * @param unstakeDelaySec - the unstake delay for this paymaster. Can only be increased.
      */
-    function addStake(uint32 unstakeDelaySec) external payable onlyOwner {
-        entryPoint.addStake{value : msg.value}(unstakeDelaySec);
+    function addStake(uint32 unstakeDelaySec, uint256 amount) external onlyOwner {
+        require(VTHO_TOKEN_CONTRACT.transferFrom(msg.sender, address(this), amount), "paymaster stake transfer failed");
+        require(VTHO_TOKEN_CONTRACT.approve(address(entryPoint), amount), "paymaster stake approval failed");
+        entryPoint.addStakeAmount(unstakeDelaySec, amount);
     }
 
     /**

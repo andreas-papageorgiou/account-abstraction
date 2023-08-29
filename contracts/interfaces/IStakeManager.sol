@@ -73,14 +73,29 @@ interface IStakeManager {
     /**
      * add to the deposit of the given account
      */
-    function depositTo(address account) external payable;
+    function depositTo(address account) external;
+
+
+    /**
+     * add amount to the deposit of the given account
+     */
+    function depositAmountTo(address account, uint256 amount) external;
 
     /**
      * add to the account's stake - amount and delay
      * any pending unstake is first cancelled.
      * @param _unstakeDelaySec the new lock duration before the deposit can be withdrawn.
      */
-    function addStake(uint32 _unstakeDelaySec) external payable;
+    function addStake(uint32 _unstakeDelaySec) external;
+
+    /**
+     * add amount to the account's stake - amount and delay
+     * any pending unstake is first cancelled.
+     * @param _unstakeDelaySec the new lock duration before the deposit can be withdrawn.
+     * @param amount the amount to be added
+     */
+    function addStakeAmount(uint32 _unstakeDelaySec, uint256 amount) external;
+     
 
     /**
      * attempt to unlock the stake.
@@ -93,12 +108,12 @@ interface IStakeManager {
      * must first call unlockStake and wait for the unstakeDelay to pass
      * @param withdrawAddress the address to send withdrawn value.
      */
-    function withdrawStake(address payable withdrawAddress) external;
+    function withdrawStake(address withdrawAddress) external;
 
     /**
      * withdraw from the deposit.
      * @param withdrawAddress the address to send withdrawn value.
      * @param withdrawAmount the amount to withdraw.
      */
-    function withdrawTo(address payable withdrawAddress, uint256 withdrawAmount) external;
+    function withdrawTo(address withdrawAddress, uint256 withdrawAmount) external;
 }

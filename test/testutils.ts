@@ -1,3 +1,32 @@
+import config from './config';
+import {
+  EntryPoint,
+  EntryPoint__factory,
+  SimpleAccountFactory,
+  SimpleAccountFactory__factory
+} from '../typechain'
+
+export async function createAccount (
+  ethersSigner: Signer,
+  accountOwner: string,
+): Promise<{
+    proxy: SimpleAccount
+    accountFactory: SimpleAccountFactory
+  }>
+{
+  const accountFactory = new SimpleAccountFactory__factory()
+    .attach(config.simpleAccountFactoryAddress)
+    .connect(ethersSigner);
+  await accountFactory.createAccount(accountOwner, 0);
+  const accountAddress = await accountFactory.getAddress(accountOwner, 0);
+  const proxy = SimpleAccount__factory.connect(accountAddress, ethersSigner);
+  return {
+    accountFactory,
+    proxy
+  };
+}
+
+
 import { ethers } from 'hardhat'
 import {
   arrayify,
@@ -7,19 +36,16 @@ import {
 } from 'ethers/lib/utils'
 import { BigNumber, BigNumberish, Contract, ContractReceipt, Signer, Wallet } from 'ethers'
 import {
-  EntryPoint,
-  EntryPoint__factory,
   IERC20,
   IEntryPoint,
   SimpleAccount,
-  SimpleAccountFactory__factory,
-  SimpleAccount__factory, SimpleAccountFactory, TestAggregatedAccountFactory
+  SimpleAccount__factory, TestAggregatedAccountFactory
 } from '../typechain'
 import { BytesLike } from '@ethersproject/bytes'
 import { expect } from 'chai'
-import { Create2Factory } from '../src/Create2Factory'
-import { debugTransaction } from './debugTx'
+import { debugTransaction } from './_debugTx'
 import { UserOperation } from './UserOperation'
+import { randomInt } from 'crypto';
 
 export const AddressZero = ethers.constants.AddressZero
 export const HashZero = ethers.constants.HashZero
@@ -59,11 +85,11 @@ export async function getTokenBalance (token: IERC20, address: string): Promise<
   return parseInt(balance.toString())
 }
 
-let counter = 0
+let seed = randomInt(2^16);
 
 // create non-random account, so gas calculations are deterministic
 export function createAccountOwner (): Wallet {
-  const privateKey = keccak256(Buffer.from(arrayify(BigNumber.from(++counter))))
+  const privateKey = keccak256(Buffer.from(arrayify(BigNumber.from(++seed))))
   return new ethers.Wallet(privateKey, ethers.provider)
   // return new ethers.Wallet('0x'.padEnd(66, privkeyBase), ethers.provider);
 }
@@ -263,13 +289,6 @@ export function simulationResultWithAggregationCatch (e: any): any {
   return e.errorArgs
 }
 
-export async function deployEntryPoint (provider = ethers.provider): Promise<EntryPoint> {
-  const create2factory = new Create2Factory(provider)
-  const epf = new EntryPoint__factory(provider.getSigner())
-  const addr = await create2factory.deploy(epf.bytecode, 0, process.env.COVERAGE != null ? 20e6 : 8e6)
-  return EntryPoint__factory.connect(addr, provider.getSigner())
-}
-
 export async function isDeployed (addr: string): Promise<boolean> {
   const code = await ethers.provider.getCode(addr)
   return code.length > 2
@@ -282,28 +301,4 @@ export function userOpsWithoutAgg (userOps: UserOperation[]): IEntryPoint.UserOp
     aggregator: AddressZero,
     signature: '0x'
   }]
-}
-
-// Deploys an implementation and a proxy pointing to this implementation
-export async function createAccount (
-  ethersSigner: Signer,
-  accountOwner: string,
-  entryPoint: string,
-  _factory?: SimpleAccountFactory
-):
-  Promise<{
-    proxy: SimpleAccount
-    accountFactory: SimpleAccountFactory
-    implementation: string
-  }> {
-  const accountFactory = _factory ?? await new SimpleAccountFactory__factory(ethersSigner).deploy(entryPoint)
-  const implementation = await accountFactory.accountImplementation()
-  await accountFactory.createAccount(accountOwner, 0)
-  const accountAddress = await accountFactory.getAddress(accountOwner, 0)
-  const proxy = SimpleAccount__factory.connect(accountAddress, ethersSigner)
-  return {
-    implementation,
-    accountFactory,
-    proxy
-  }
 }

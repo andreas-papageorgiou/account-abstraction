@@ -2,9 +2,9 @@
 pragma solidity ^0.8.12;
 
 /* solhint-disable avoid-low-level-calls */
-/* solhint-disable no-inline-assembly */
-/* solhint-disable reason-string */
+/* solhint-disable no-empty-blocks */
 
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "../interfaces/IAccount.sol";
 import "../interfaces/IEntryPoint.sol";
 import "./Helpers.sol";
@@ -15,6 +15,9 @@ import "./Helpers.sol";
  * specific account implementation should inherit it and provide the account-specific logic
  */
 abstract contract BaseAccount is IAccount {
+    address public constant VTHO_TOKEN_ADDRESS = 0x0000000000000000000000000000456E65726779;
+    IERC20 public constant VTHO_TOKEN_CONTRACT = IERC20(VTHO_TOKEN_ADDRESS);
+
     using UserOperationLib for UserOperation;
 
     //return value in case of signature failure, with no time-range.
@@ -22,10 +25,13 @@ abstract contract BaseAccount is IAccount {
     uint256 constant internal SIG_VALIDATION_FAILED = 1;
 
     /**
-     * return the account nonce.
-     * subclass should return a nonce value that is used both by _validateAndUpdateNonce, and by the external provider (to read the current nonce)
+     * Return the account nonce.
+     * This method returns the next sequential nonce.
+     * For a nonce of a specific key, use `entrypoint.getNonce(account, key)`
      */
-    function nonce() public view virtual returns (uint256);
+    function getNonce() public view virtual returns (uint256) {
+        return entryPoint().getNonce(address(this), 0);
+    }
 
     /**
      * return the entryPoint used by this account.
@@ -41,9 +47,7 @@ abstract contract BaseAccount is IAccount {
     external override virtual returns (uint256 validationData) {
         _requireFromEntryPoint();
         validationData = _validateSignature(userOp, userOpHash);
-        if (userOp.initCode.length == 0) {
-            _validateAndUpdateNonce(userOp);
-        }
+        _validateNonce(userOp.nonce);
         _payPrefund(missingAccountFunds);
     }
 
@@ -71,12 +75,23 @@ abstract contract BaseAccount is IAccount {
     internal virtual returns (uint256 validationData);
 
     /**
-     * validate the current nonce matches the UserOperation nonce.
-     * then it should update the account's state to prevent replay of this UserOperation.
-     * called only if initCode is empty (since "nonce" field is used as "salt" on account creation)
-     * @param userOp the op to validate.
+     * Validate the nonce of the UserOperation.
+     * This method may validate the nonce requirement of this account.
+     * e.g.
+     * To limit the nonce to use sequenced UserOps only (no "out of order" UserOps):
+     *      `require(nonce < type(uint64).max)`
+     * For a hypothetical account that *requires* the nonce to be out-of-order:
+     *      `require(nonce & type(uint64).max == 0)`
+     *
+     * The actual nonce uniqueness is managed by the EntryPoint, and thus no other
+     * action is needed by the account itself.
+     *
+     * @param nonce to validate
+     *
+     * solhint-disable-next-line no-empty-blocks
      */
-    function _validateAndUpdateNonce(UserOperation calldata userOp) internal virtual;
+    function _validateNonce(uint256 nonce) internal view virtual {
+    }
 
     /**
      * sends to the entrypoint (msg.sender) the missing funds for this transaction.
@@ -87,10 +102,9 @@ abstract contract BaseAccount is IAccount {
      *  this value MAY be zero, in case there is enough deposit, or the userOp has a paymaster.
      */
     function _payPrefund(uint256 missingAccountFunds) internal virtual {
-        if (missingAccountFunds != 0) {
-            (bool success,) = payable(msg.sender).call{value : missingAccountFunds, gas : type(uint256).max}("");
-            (success);
-            //ignore failure (its EntryPoint's job to verify, not account.)
+         if (missingAccountFunds != 0) {
+            require(VTHO_TOKEN_CONTRACT.approve(msg.sender, missingAccountFunds), "prefund approval failed");
+            entryPoint().depositAmountTo(address(this), missingAccountFunds);
         }
     }
 }

@@ -4,6 +4,8 @@ pragma solidity ^0.8.12;
 
 import "../samples/SimpleAccount.sol";
 contract TestRevertAccount is IAccount {
+    address public constant VTHO_TOKEN_ADDRESS = 0x0000000000000000000000000000456E65726779;
+    IERC20 public constant VTHO_TOKEN_CONTRACT = IERC20(VTHO_TOKEN_ADDRESS);
     IEntryPoint private ep;
     constructor(IEntryPoint _ep) payable {
         ep = _ep;
@@ -11,7 +13,8 @@ contract TestRevertAccount is IAccount {
 
     function validateUserOp(UserOperation calldata, bytes32, uint256 missingAccountFunds)
     external override returns (uint256 validationData) {
-        ep.depositTo{value : missingAccountFunds}(address(this));
+        require(VTHO_TOKEN_CONTRACT.approve(address(ep), missingAccountFunds), "revert approval failed");
+        ep.depositAmountTo(address(this), missingAccountFunds);
         return 0;
     }
 
